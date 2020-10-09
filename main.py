@@ -63,61 +63,89 @@ class TemplateMatch:
         predictedCoordX = 0
         predictedCoordy = 0
         displayControl = True
-        self.cam.set(cv2.CAP_PROP_POS_FRAMES, frameCount)
+        breakTracking = False
+        trackingStoped = False
         while True:
+            self.cam.set(cv2.CAP_PROP_POS_FRAMES, frameCount)
             ok, frame = self.cam.read()
             if not ok:
                 print(". Error - video frame could not read")
                 break
             tw = template[1][0]
             th = template[1][1]
-            areaToScan = frame[searchBound[1]:searchBound[3], searchBound[0]:searchBound[2]]
-            matchedValue, differenceX, differenceY = self.detect(areaToScan, template[0], *template[1])
-            templateLocation[0] = differenceX + searchBound[0]
-            templateLocation[1] = differenceY + searchBound[1]
-            templateLocation[2] = differenceX + searchBound[0] + tw
-            templateLocation[3] = differenceY + searchBound[1] + th
-            fishTracker[frameCount] = [int(frameCount), templateLocation[0]+tw*0.5, templateLocation[1]+th*0.5]
-            if matchedValue >= self.threshold and self.kalmanFilterEnable:
-                templateLocationCpy = templateLocation
-                predictedResults = kalmanFilter.Estimate(templateLocation[0], templateLocation[1])
-                predictedCoordX, predictedCoordY, cov_x, cov_y = predictedResults[:,0]
-                if round(abs(cov_x)) < 10 and 0 < round(abs(cov_x)):
-                    templateLocationCpy[0] = predictedCoordX
-                    templateLocationCpy[2] = predictedCoordX + tw
-                    x_margin = np.sqrt((np.square(matchedValue*cov_x)+np.square((1-matchedValue)*differenceX))/ 2)+5
+            if not trackingStoped:
+                areaToScan = frame[searchBound[1]:searchBound[3], searchBound[0]:searchBound[2]]
+                matchedValue, differenceX, differenceY = self.detect(areaToScan, template[0], *template[1])
+                templateLocation[0] = differenceX + searchBound[0]
+                templateLocation[1] = differenceY + searchBound[1]
+                templateLocation[2] = differenceX + searchBound[0] + tw
+                templateLocation[3] = differenceY + searchBound[1] + th
+                fishTracker[frameCount] = [int(frameCount), templateLocation[0]+tw*0.5, templateLocation[1]+th*0.5]
+                if matchedValue >= self.threshold and self.kalmanFilterEnable:
+                    templateLocationCpy = templateLocation
+                    predictedResults = kalmanFilter.Estimate(templateLocation[0], templateLocation[1])
+                    predictedCoordX, predictedCoordY, cov_x, cov_y = predictedResults[:,0]
+                    if round(abs(cov_x)) < 10 and 0 < round(abs(cov_x)):
+                        templateLocationCpy[0] = predictedCoordX
+                        templateLocationCpy[2] = predictedCoordX + tw
+                        x_margin = np.sqrt((np.square(matchedValue*cov_x)+np.square((1-matchedValue)*differenceX))/ 2)+5
+                    else:
+                        x_margin = np.sqrt((np.square((1-matchedValue)*(predictedCoordX-templateLocation[0]))+np.square(matchedValue*differenceX))/2) + 10
+                    if round(abs(cov_y)) < 10 and 0 < round(abs(cov_y)):
+                        templateLocationCpy[1] = predictedCoordY
+                        templateLocationCpy[3] = predictedCoordY + th
+                        y_margin = np.sqrt((np.square(matchedValue*cov_y)+np.square((1-matchedValue)*differenceY))/ 2)+5
+                    else:
+                        y_margin = np.sqrt((np.square((1-matchedValue)*(predictedCoordY-templateLocation[1]))+np.square(matchedValue*differenceY))/2) + 10 
+                    searchBound[0] = int(abs(templateLocationCpy[0] - x_margin))
+                    searchBound[1] = int(abs(templateLocationCpy[1] - y_margin))
+                    searchBound[2] = int(abs(templateLocationCpy[2] + x_margin))
+                    searchBound[3] = int(abs(templateLocationCpy[3] + y_margin))
+                    if searchBound[0] < 0:
+                        searchBound[0] = 0
+                    if searchBound[1] <= 0:
+                        searchBound[1] = 0
+                    if searchBound[2]>= camWidth:
+                        searchBound[2] = camWidth
+                    if searchBound[3] >= camHeight:
+                        searchBound[3] = camHeight
+                    breakTracking = False
+                    displayControl = True
+                    print("Press ESC to exit, b to break track - ", frameCount)
                 else:
-                    x_margin = np.sqrt((np.square((1-matchedValue)*(predictedCoordX-templateLocation[0]))+np.square(matchedValue*differenceX))/2) + 10
-                if round(abs(cov_y)) < 10 and 0 < round(abs(cov_y)):
-                    templateLocationCpy[1] = predictedCoordY
-                    templateLocationCpy[3] = predictedCoordY + th
-                    y_margin = np.sqrt((np.square(matchedValue*cov_y)+np.square((1-matchedValue)*differenceY))/ 2)+5
+                    breakTracking = True
+                    displayControl = False
+            keyInput = (cv2.waitKey(1) & 0xFF)
+            if breakTracking or keyInput == 98:
+                trackingStoped = True
+                print("Press SPACE to select, ESC to exit, n to next, p to prev.")
+                keyInput = (cv2.waitKey(1) & 0xFF)
+            if trackingStoped:
+                trackingStoped = True
+                if keyInput == 27:
+                    break
+                elif keyInput ==  32 : # ' '
+                    myRoi = cv2.selectROI("Tracking", frame, True, True)
+                    imCrop = frame[int(myRoi[1]) : int(myRoi[1]+myRoi[3]) , int(myRoi[0]) : int(myRoi[0]+myRoi[2])]
+                    templateGray = cv2.cvtColor(imCrop, cv2.COLOR_BGR2GRAY)
+                    template = (templateGray, templateGray.shape[::-1])
+                    fishTracker[frameCount] = [frameCount, myRoi[0] + myRoi[2]*0.5, myRoi[1] + myRoi[3]*0.5]
+                    searchBound = [0, 0, camWidth, camHeight]
+                    trackingStoped = False
+                elif keyInput == 110 : # 'n'
+                    if frameCount >= numOfFrames-1:
+                        frameCount = numOfFrames-2
+                elif keyInput == 112 : # 'p'
+                    frameCount = frameCount - 2
+                    if frameCount < -1:
+                        frameCount = -1
                 else:
-                    y_margin = np.sqrt((np.square((1-matchedValue)*(predictedCoordY-templateLocation[1]))+np.square(matchedValue*differenceY))/2) + 10 
-                searchBound[0] = int(abs(templateLocationCpy[0] - x_margin))
-                searchBound[1] = int(abs(templateLocationCpy[1] - y_margin))
-                searchBound[2] = int(abs(templateLocationCpy[2] + x_margin))
-                searchBound[3] = int(abs(templateLocationCpy[3] + y_margin))
-                if searchBound[0] < 0:
-                    searchBound[0] = 0
-                if searchBound[1] <= 0:
-                    searchBound[1] = 0
-                if searchBound[2]>= camWidth:
-                    searchBound[2] = camWidth
-                if searchBound[3] >= camHeight:
-                    searchBound[3] = camHeight
-                displayControl = True
-            else:
-                searchBound = [0, 0, camWidth, camHeight]
-                myRoi = cv2.selectROI("Tracking", frame, True, True)
-                imCrop = frame[int(myRoi[1]) : int(myRoi[1]+myRoi[3]) , int(myRoi[0]) : int(myRoi[0]+myRoi[2])]
-                templateGray = cv2.cvtColor(imCrop, cv2.COLOR_BGR2GRAY)
-                template = (templateGray, templateGray.shape[::-1])
+                    frameCount = frameCount - 1
                 displayControl = False
             if displayControl:
                 cv2.rectangle(frame, (int(templateLocation[0]), int(templateLocation[1])), (int(templateLocation[0]+tw), int(templateLocation[1]+th)), (255,0,0), 0)
-                cv2.imshow("Tracking", frame)
-            print("frame num: ", frameCount, " match: ", matchedValue)
+            cv2.putText(frame, '{}'.format(frameCount), (50,50), cv2.FONT_HERSHEY_SIMPLEX , 1, (255,0,0), 2, cv2.LINE_AA) 
+            cv2.imshow("Tracking", frame)
             frameCount += 1
             keyInput = (cv2.waitKey(1) & 0xFF)
             if keyInput == 27:
