@@ -49,33 +49,35 @@ class TemplateMatch:
             return -1
         myRoi = cv2.selectROI("Tracking", frame, True, True)
         imCrop = frame[int(myRoi[1]) : int(myRoi[1]+myRoi[3]) , int(myRoi[0]) : int(myRoi[0]+myRoi[2])]
-        template_gray = cv2.cvtColor(imCrop, cv2.COLOR_BGR2GRAY)
-        template = (template_gray, template_gray.shape[::-1])
+        templateGray = cv2.cvtColor(imCrop, cv2.COLOR_BGR2GRAY)
+        template = (templateGray, templateGray.shape[::-1])
         kalmanFilter = KalmanFilter()
         predictedResults = np.zeros((2,1), np.float32)
         camWidth= int(self.cam.get(3))
         camHeight = int(self.cam.get(4))
         searchBound = [0, 0, camWidth, camHeight]
-        templateLocation = [0, 0, camWidth, camHeight]
-        frame_count = 0
+        templateLocation = [0, 0, np.float32(camWidth), np.float32(camHeight)]
+        frameCount = 0
+        fishTracker = np.zeros((numOfFrames, 3), np.float32)
         keyInput = 0
         predictedCoordX = 0
         predictedCoordy = 0
         displayControl = True
-        self.cam.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
+        self.cam.set(cv2.CAP_PROP_POS_FRAMES, frameCount)
         while True:
             ok, frame = self.cam.read()
             if not ok:
                 print(". Error - video frame could not read")
                 break
-            tw = int(template[1][0])
-            th = int(template[1][1])
+            tw = template[1][0]
+            th = template[1][1]
             areaToScan = frame[searchBound[1]:searchBound[3], searchBound[0]:searchBound[2]]
             matchedValue, differenceX, differenceY = self.detect(areaToScan, template[0], *template[1])
             templateLocation[0] = differenceX + searchBound[0]
             templateLocation[1] = differenceY + searchBound[1]
             templateLocation[2] = differenceX + searchBound[0] + tw
             templateLocation[3] = differenceY + searchBound[1] + th
+            fishTracker[frameCount] = [int(frameCount), templateLocation[0]+tw*0.5, templateLocation[1]+th*0.5]
             if matchedValue >= self.threshold and self.kalmanFilterEnable:
                 templateLocationCpy = templateLocation
                 predictedResults = kalmanFilter.Estimate(templateLocation[0], templateLocation[1])
@@ -109,14 +111,14 @@ class TemplateMatch:
                 searchBound = [0, 0, camWidth, camHeight]
                 myRoi = cv2.selectROI("Tracking", frame, True, True)
                 imCrop = frame[int(myRoi[1]) : int(myRoi[1]+myRoi[3]) , int(myRoi[0]) : int(myRoi[0]+myRoi[2])]
-                template_gray = cv2.cvtColor(imCrop, cv2.COLOR_BGR2GRAY)
-                template = (template_gray, template_gray.shape[::-1])
+                templateGray = cv2.cvtColor(imCrop, cv2.COLOR_BGR2GRAY)
+                template = (templateGray, templateGray.shape[::-1])
                 displayControl = False
             if displayControl:
                 cv2.rectangle(frame, (int(templateLocation[0]), int(templateLocation[1])), (int(templateLocation[0]+tw), int(templateLocation[1]+th)), (255,0,0), 0)
                 cv2.imshow("Tracking", frame)
-            print("frame num: ", frame_count, " match: ", matchedValue)
-            frame_count += 1
+            print("frame num: ", frameCount, " match: ", matchedValue)
+            frameCount += 1
             keyInput = (cv2.waitKey(1) & 0xFF)
             if keyInput == 27:
                 break
@@ -125,6 +127,6 @@ if __name__ == "__main__":
     app = TemplateMatch()
     app.source_video = "../template_matching_v1/videos/fish5_trial1_055hz_01cm.mov"
     app.kalmanFilterEnable = True
-    app.threshold = 0.9999
+    app.threshold = 0.95
     app.main()
     print("=========== DONE =============")
