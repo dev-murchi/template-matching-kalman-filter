@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 import sys
 import time
+import csv
 class KalmanFilter:
     kf = cv2.KalmanFilter(4,2)
     kf.measurementMatrix = np.array([[1, 0, 0, 0], [0, 1, 0, 0]], np.float32)
@@ -14,7 +15,7 @@ class KalmanFilter:
         predicted = self.kf.predict()
         return predicted
 class TemplateMatch:
-    def __init__(self,kalmanFilterEnable=False, match_method = cv2.TM_CCORR_NORMED, threshold=0.95):
+    def __init__(self,kalmanFilterEnable=False, match_method = cv2.TM_CCOEFF_NORMED, threshold=0.7):
         ''' This function initializes the Template Matching Class '''
         self.source_video = ""
         self.cam = cv2.VideoCapture()
@@ -34,7 +35,7 @@ class TemplateMatch:
             top_left = max_loc
             match_val = max_val
         return (match_val, top_left[0], top_left[1])
-    def main(self):
+    def main(self, csvPath):
         ok = self.cam.open(self.source_video)
         if not ok:
             print("Error - could not open video file")
@@ -60,6 +61,14 @@ class TemplateMatch:
         predictedCoordy = 0
         trackingStoped = True
         breakTracking = True
+        if os.path.exists(csvPath):
+            with open(csvPath, 'rt', newline = '') as csvFile:
+                reader = csv.reader(csvFile)
+                for row in reader:
+                    fishTracker[int(float(row[0]))] = [float(row[0]), float(row[1]), float(row[2]), float(row[3])]
+        else:
+            with open(csvPath,'w') as fp:
+                pass
         print("Press SPACE to select, ESC to exit, n to next, p to prev.")
         while True:
             self.cam.set(cv2.CAP_PROP_POS_FRAMES, frameCount)
@@ -157,12 +166,16 @@ class TemplateMatch:
                 trackingStoped = True
             
         cv2.destroyAllWindows()
-        return fishTracker
+        with open(csvPath, 'w', encoding='utf-8', newline='') as csvFile:
+            writer = csv.writer(csvFile)
+            for track in fishTracker:
+                writer.writerow(track)
 if __name__ == "__main__":
-    app = TemplateMatch()
-    app.source_video = "/path/to/video/source/"
-    app.match_method = cv2.TM_CCOEFF_NORMED
-    app.kalmanFilterEnable = True
-    app.threshold = 0.85
-    trackerValues = app.main()
+    if len(sys.argv) == 5:
+        app = TemplateMatch()
+        app.source_video = str(sys.argv[1])
+        csvPath = str(sys.argv[2])
+        app.threshold = float(sys.argv[3])
+        app.kalmanFilterEnable = sys.argv[4]
+        app.main(csvPath)
     print("=========== DONE =============")
