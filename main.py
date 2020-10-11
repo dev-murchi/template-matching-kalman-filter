@@ -22,7 +22,6 @@ class TemplateMatch:
         self.kalmanFilterEnable = kalmanFilterEnable
         self.threshold = threshold
         self.match_method = match_method
-        self.track_mode = "manual"
     def detect(self, frame, templ, w, h):
         ''' This function detects the template on source frame'''
         gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
