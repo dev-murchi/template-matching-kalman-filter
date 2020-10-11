@@ -1,4 +1,4 @@
-# template-matching-kalman-filter
+# Template Matching with Kalman Filter
 Object detection and tracking using template matching and Kalman filter.
 This was the continuation of my graduation project. 
 I worked with my project supervisor Dr. İsmail UYANIK. Thanks to him for all his support.
